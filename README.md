@@ -1,73 +1,93 @@
-# Secure Login System: XSS Protection
+# Bean Counter: Coffee Shop Menu System
 
-A PHP + MySQL (PDO) register, login, logout, and "Who Did It" activity log system, built to demonstrate how Cross-Site Scripting (XSS) attacks work and how to defend against them.
+A PHP + MySQL (PDO) web app for managing a coffee shop menu. It has user registration and login, full create/read/update/delete (CRUD) for categories and menu items, a search feature, and tracking of who added or changed each record and when. It is also secured against Cross-Site Scripting (XSS).
 
 ## Features
 
-- User registration and login with hashed passwords (`password_hash` / `password_verify`)
-- Logout with full session destruction
-- "Who Did It" activity log that records register, login, and logout actions
-- XSS protection on all output
-- Strong password policy
-- CSRF token on every form
-- SQL injection protection through PDO prepared statements
+- Register, login, and logout with hashed passwords (`password_hash` / `password_verify`)
+- **Categories** (parent) and **Menu items** (child) with a one-to-many relationship: one category has many menu items
+- Add, edit, and delete records on both entities
+- **Search** on both entities
+  - Categories: by name or description
+  - Menu items: by item name, size, or category name (works together with the category filter)
+- **Record tracking** on both tables
+  - `date_added`: when the record was created
+  - `added_by`: id of the user who created it
+  - `last_updated`: timestamp of the last edit
+  - `last_updated_by`: id of the user who made the last edit
+- Deleting a category also deletes its menu items (`ON DELETE CASCADE`)
+- Pages are only available to logged-in users
 
-## Security Measures
+## Security
 
-| # | Measure | File | What it does |
-|---|---------|------|--------------|
-| 1 | HttpOnly session cookie | `security.php` | Stops JavaScript from reading the session cookie |
-| 2 | Content Security Policy header | `security.php` | Tells the browser to block inline and third-party scripts |
-| 3 | Output escaping with `htmlspecialchars()` | `security.php` (`e()`) | Displays injected scripts as plain text instead of running them |
-| 4 | Password validation | `security.php` | Requires 8+ characters with uppercase, lowercase, and a number |
-| 5 | Input sanitizing with `strip_tags()` | `security.php` (`cleanInput()`) | Removes HTML tags from usernames before saving |
+| Measure | Where | What it does |
+|---------|-------|--------------|
+| Output escaping with `htmlspecialchars()` | `e()` in `dbconfig.php` | Shows injected scripts as plain text instead of running them |
+| Input check for `<` and `>` | `has_html()` in `dbconfig.php` | Rejects HTML tags in names and descriptions |
+| HttpOnly session cookie | `dbconfig.php` | Stops JavaScript from reading the session cookie |
+| Content Security Policy header | `dbconfig.php` | Blocks inline scripts and scripts from other sources |
+| `X-Content-Type-Options` and `X-XSS-Protection` headers | `dbconfig.php` | Extra browser-side protection |
+| Password rules | `is_strong_password()` in `dbconfig.php` | 8+ characters with uppercase, lowercase, and a number |
+| PDO prepared statements | All pages | Protects against SQL injection |
 
-## Password Rules
+## Database
 
-- Minimum of 8 characters
-- At least one uppercase letter
-- At least one lowercase letter
-- At least one number
+Database name: `coffeeshop`
+
+| Table | Purpose | Key columns |
+|-------|---------|-------------|
+| `users` | Accounts | `user_id`, `username`, `email`, `password` |
+| `categories` | Parent records | `category_id`, `category_name`, `description`, `date_added`, `added_by`, `last_updated`, `last_updated_by` |
+| `menu_items` | Child records | `item_id`, `category_id` (FK), `item_name`, `price`, `size`, `date_added`, `added_by`, `last_updated`, `last_updated_by` |
 
 ## Project Structure
 
 ```
-xss_secure/
-├── index.php       # Redirects to login
-├── db.php          # PDO connection, auto-creates database and tables
-├── security.php    # Session settings, headers, escaping, validation, CSRF, logging
-├── register.php    # Registration page
-├── login.php       # Login page
-├── logout.php      # Logout and session destroy
-├── dashboard.php   # Welcome page and Who Did It log
-└── style.css       # Styling
+coffeeshop/
+├── index.php                      # Menu overview
+├── login.php / register.php / logout.php
+├── dbconfig.php                   # PDO connection, security settings, helper functions
+├── database.sql                   # Full database setup (tables and sample data)
+├── migration_add_date_added.sql   # Adds date_added to an existing database
+├── includes/                      # header.php, footer.php
+├── categories/                    # list (with search), add, edit, delete
+├── items/                         # list (with search), add, edit, delete, _form
+└── assets/                        # style.css, app.js
 ```
 
 ## Requirements
 
-- XAMPP (Apache + MySQL) or any PHP 7.4+ and MySQL setup
+- XAMPP (Apache + MySQL) with PHP 7.4 or newer
 - A web browser
 
 ## Installation
 
 1. Clone or download this repository.
-2. Copy the folder into `C:\xampp\htdocs\`.
+2. Copy the `coffeeshop` folder into `C:\xampp\htdocs\`.
 3. Start **Apache** and **MySQL** in the XAMPP Control Panel.
-4. Open `http://localhost/xss_secure/` in your browser.
+4. Open `http://localhost/phpmyadmin`, go to the **SQL** tab, paste the contents of `database.sql`, and click **Go**.
+   - If you already have the database, run `migration_add_date_added.sql` instead to keep your data.
+5. Open `http://localhost/coffeeshop/register.php`, create an account, then log in.
 
-The database (`xss_demo`) and its tables are created automatically on first run.
+The folder must be named `coffeeshop`, or you must change `BASE_URL` in `dbconfig.php`.
 
-## XSS Attack Demo (for learning only)
+## How to Use the Search
 
-To reproduce the vulnerability on a local copy:
+1. Log in and open **Categories** or **Menu items**.
+2. Type a keyword in the search box and click **Search**.
+3. Use **Edit** or **Delete** on a result to update or remove it.
+4. Check `last_updated` and `last_updated_by` in the list or in phpMyAdmin to confirm the change was recorded.
 
-1. In `register.php`, replace `cleanInput($_POST['username'] ?? '')` with `$_POST['username'] ?? ''`.
-2. In `dashboard.php`, replace `e($log['username'])` with `$log['username']`.
-3. Register with this username: `<h1 style="color:red">HACKED BY XSS</h1>`
-4. Log in and open the dashboard. The injected HTML is rendered (defacement).
+## XSS Demo (for learning only)
 
-Restore the original code to see the attack neutralized and displayed as plain text.
+`dbconfig.php` has a switch:
+
+```php
+define('SECURE_MODE', true);   // set to false to demonstrate the attack
+```
+
+With `SECURE_MODE` set to `false`, escaping and input checks are turned off so you can show how an injected script runs. Set it back to `true` to see the attack blocked. Only test on your own local system.
 
 ## Disclaimer
 
-This project was made for educational purposes as part of a school activity. Only test attacks on your own local system.
+Made for educational purposes as part of a school activity.
